@@ -1,0 +1,197 @@
+#include <SFML/Graphics.hpp>
+#include <optional>
+#include <cstdlib>
+#include <string>
+#include <unordered_map>
+
+struct CellKey {
+    int row;
+    int col;
+
+    bool operator==(const CellKey& other) const {
+        return row == other.row && col == other.col;
+    }
+};
+
+struct CellKeyHash {
+    std::size_t operator()(const CellKey& key) const {
+        return (static_cast<std::size_t>(key.row) << 16) ^ static_cast<std::size_t>(key.col);
+    }
+};
+
+int main() {
+    const int cols = 12;
+    const int rows = 20;
+    const int cellW = 70;
+    const int cellH = 32;
+    const int margin = 24;
+
+    sf::RenderWindow window(
+        sf::VideoMode({static_cast<unsigned int>(margin * 2 + cols * cellW), static_cast<unsigned int>(margin * 2 + rows * cellH)}),
+        "MiniExcel"
+    );
+
+    std::unordered_map<CellKey, int, CellKeyHash> cells;
+    int selectedRow = 0;
+    int selectedCol = 0;
+    std::string editBuffer;
+
+    sf::Font font;
+    const bool fontLoaded =
+        font.openFromFile("C:/Windows/Fonts/segoeui.ttf") ||
+        font.openFromFile("C:/Windows/Fonts/arial.ttf");
+
+    auto keyOfSelection = [&]() {
+        return CellKey{selectedRow, selectedCol};
+    };
+
+    auto syncBufferFromCell = [&]() {
+        const auto it = cells.find(keyOfSelection());
+        if (it != cells.end()) {
+            editBuffer = std::to_string(it->second);
+        } else {
+            editBuffer.clear();
+        }
+    };
+
+    auto updateTitle = [&]() {
+        const std::string title =
+            "MiniExcel | celda [" + std::to_string(selectedRow + 1) + "," + std::to_string(selectedCol + 1) +
+            "] | valor: " + (editBuffer.empty() ? std::string("(vacio)") : editBuffer) +
+            " | Enter=guardar, Delete=borrar";
+        window.setTitle(title);
+    };
+    syncBufferFromCell();
+    updateTitle();
+
+    while (window.isOpen()) {
+        while (const std::optional event = window.pollEvent()) {
+            if (event->is<sf::Event::Closed>()) {
+                window.close();
+            }
+
+            if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
+                const auto key = keyPressed->code;
+
+                if (key == sf::Keyboard::Key::Left) {
+                    if (selectedCol > 0) {
+                        selectedCol--;
+                        syncBufferFromCell();
+                    }
+                } else if (key == sf::Keyboard::Key::Right) {
+                    if (selectedCol < cols - 1) {
+                        selectedCol++;
+                        syncBufferFromCell();
+                    }
+                } else if (key == sf::Keyboard::Key::Up) {
+                    if (selectedRow > 0) {
+                        selectedRow--;
+                        syncBufferFromCell();
+                    }
+                } else if (key == sf::Keyboard::Key::Down) {
+                    if (selectedRow < rows - 1) {
+                        selectedRow++;
+                        syncBufferFromCell();
+                    }
+                } else if (key == sf::Keyboard::Key::Enter) {
+                    const CellKey k{selectedRow, selectedCol};
+                    if (editBuffer.empty() || editBuffer == "-") {
+                        cells.erase(k);
+                    } else {
+                        cells[k] = std::stoi(editBuffer);
+                    }
+                } else if (key == sf::Keyboard::Key::Backspace) {
+                    if (!editBuffer.empty()) {
+                        editBuffer.pop_back();
+                    }
+                } else if (key == sf::Keyboard::Key::Delete) {
+                    cells.erase(CellKey{selectedRow, selectedCol});
+                    editBuffer.clear();
+                }
+
+                updateTitle();
+            }
+
+            if (const auto* textEntered = event->getIf<sf::Event::TextEntered>()) {
+                const char32_t cp = textEntered->unicode;
+                if (cp >= U'0' && cp <= U'9') {
+                    if (editBuffer.size() < 9) {
+                        editBuffer.push_back(static_cast<char>(cp));
+                    }
+                } else if (cp == U'-') {
+                    if (editBuffer.empty()) {
+                        editBuffer.push_back('-');
+                    }
+                }
+                updateTitle();
+            }
+
+            if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>()) {
+                if (mousePressed->button == sf::Mouse::Button::Left) {
+                    const int mx = mousePressed->position.x;
+                    const int my = mousePressed->position.y;
+                    const int gx = mx - margin;
+                    const int gy = my - margin;
+                    if (gx >= 0 && gy >= 0) {
+                        const int c = gx / cellW;
+                        const int r = gy / cellH;
+                        if (c >= 0 && c < cols && r >= 0 && r < rows) {
+                            selectedCol = c;
+                            selectedRow = r;
+                            syncBufferFromCell();
+                            updateTitle();
+                        }
+                    }
+                }
+            }
+        }
+
+        window.clear(sf::Color(20, 24, 30));
+
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                sf::RectangleShape cell(sf::Vector2f(static_cast<float>(cellW - 1), static_cast<float>(cellH - 1)));
+                cell.setPosition(sf::Vector2f(static_cast<float>(margin + c * cellW), static_cast<float>(margin + r * cellH)));
+
+                const bool selected = (r == selectedRow && c == selectedCol);
+                const bool hasValue = cells.find(CellKey{r, c}) != cells.end();
+
+                if (selected) {
+                    cell.setFillColor(sf::Color(70, 120, 220));
+                } else if (hasValue) {
+                    cell.setFillColor(sf::Color(70, 150, 90));
+                } else {
+                    cell.setFillColor(sf::Color(40, 45, 55));
+                }
+
+                window.draw(cell);
+
+                if (fontLoaded) {
+                    std::string textValue;
+                    if (selected && !editBuffer.empty()) {
+                        textValue = editBuffer;
+                    } else {
+                        const auto it = cells.find(CellKey{r, c});
+                        if (it != cells.end()) {
+                            textValue = std::to_string(it->second);
+                        }
+                    }
+
+                    if (!textValue.empty()) {
+                        sf::Text text(font, textValue, 14);
+                        text.setFillColor(sf::Color::White);
+                        text.setPosition(sf::Vector2f(
+                            static_cast<float>(margin + c * cellW + 6),
+                            static_cast<float>(margin + r * cellH + 6)
+                        ));
+                        window.draw(text);
+                    }
+                }
+            }
+        }
+
+        window.display();
+    }
+
+    return 0;
+}
