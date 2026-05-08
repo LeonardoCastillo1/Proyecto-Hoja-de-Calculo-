@@ -4,23 +4,8 @@
 #include <optional>
 #include <sstream>
 #include <string>
-#include <unordered_map>
 
-// Coordenada usada como llave del unordered_map: una celda se identifica por fila y columna.
-struct CellKey {
-    int row;
-    int col;
-
-    bool operator==(const CellKey& other) const {
-        return row == other.row && col == other.col;
-    }
-};
-
-struct CellKeyHash {
-    std::size_t operator()(const CellKey& key) const {
-        return (static_cast<std::size_t>(key.row) << 16) ^ static_cast<std::size_t>(key.col);
-    }
-};
+#include "Proyecto_v006.cpp"
 
 struct CellCoord {
     int row;
@@ -138,11 +123,7 @@ std::string operationValue(RangeOperation operation, const OperationResult& resu
 }
 
 // Calcula suma, resta, promedio, maximo y minimo para un rango rectangular.
-OperationResult calculateRangeStats(
-    const std::unordered_map<CellKey, int, CellKeyHash>& cells,
-    CellCoord a,
-    CellCoord b
-) {
+OperationResult calculateRangeStats(SparseMatrix& cells, CellCoord a, CellCoord b) {
     const int rowStart = std::min(a.row, b.row);
     const int rowEnd = std::max(a.row, b.row);
     const int colStart = std::min(a.col, b.col);
@@ -150,26 +131,26 @@ OperationResult calculateRangeStats(
 
     OperationResult result;
 
-    // Se recorre en orden de lectura: fila por fila, de izquierda a derecha.
+    // La vista usa indices desde 0; SparseMatrix recibe fila y columna desde 1.
     for (int row = rowStart; row <= rowEnd; ++row) {
         for (int col = colStart; col <= colEnd; ++col) {
-            const auto it = cells.find(CellKey{row, col});
-            if (it == cells.end()) {
+            int value = 0;
+            if (!cells.GetCellValue(row + 1, col + 1, value)) {
                 continue;
             }
 
             if (!result.hasValues) {
-                result.sum = it->second;
+                result.sum = value;
                 // La resta comienza con la primera celda ocupada y resta las siguientes.
-                result.difference = it->second;
-                result.minValue = it->second;
-                result.maxValue = it->second;
+                result.difference = value;
+                result.minValue = value;
+                result.maxValue = value;
                 result.hasValues = true;
             } else {
-                result.sum += it->second;
-                result.difference -= it->second;
-                result.minValue = std::min(result.minValue, it->second);
-                result.maxValue = std::max(result.maxValue, it->second);
+                result.sum += value;
+                result.difference -= value;
+                result.minValue = std::min(result.minValue, value);
+                result.maxValue = std::max(result.maxValue, value);
             }
 
             result.count++;
@@ -179,32 +160,30 @@ OperationResult calculateRangeStats(
     return result;
 }
 
-// Elimina todas las celdas guardadas en una fila especifica.
-int deleteRowCells(std::unordered_map<CellKey, int, CellKeyHash>& cells, int rowToDelete) {
+// Elimina todas las celdas ocupadas de la fila visible seleccionada.
+int deleteRowCells(SparseMatrix& cells, int rowToDelete, int totalCols) {
     int removed = 0;
 
-    for (auto it = cells.begin(); it != cells.end();) {
-        if (it->first.row == rowToDelete) {
-            it = cells.erase(it);
+    for (int col = 0; col < totalCols; ++col) {
+        int value = 0;
+        if (cells.GetCellValue(rowToDelete + 1, col + 1, value)) {
+            cells.ClearCellValue(rowToDelete + 1, col + 1);
             removed++;
-        } else {
-            ++it;
         }
     }
 
     return removed;
 }
 
-// Elimina todas las celdas guardadas en una columna especifica.
-int deleteColumnCells(std::unordered_map<CellKey, int, CellKeyHash>& cells, int colToDelete) {
+// Elimina todas las celdas ocupadas de la columna visible seleccionada.
+int deleteColumnCells(SparseMatrix& cells, int colToDelete, int totalRows) {
     int removed = 0;
 
-    for (auto it = cells.begin(); it != cells.end();) {
-        if (it->first.col == colToDelete) {
-            it = cells.erase(it);
+    for (int row = 0; row < totalRows; ++row) {
+        int value = 0;
+        if (cells.GetCellValue(row + 1, colToDelete + 1, value)) {
+            cells.ClearCellValue(row + 1, colToDelete + 1);
             removed++;
-        } else {
-            ++it;
         }
     }
 
@@ -223,7 +202,7 @@ int main() {
         "MiniExcel"
     );
 
-    std::unordered_map<CellKey, int, CellKeyHash> cells;
+    SparseMatrix cells;
     int selectedRow = 0;
     int selectedCol = 0;
     std::string editBuffer;
@@ -246,14 +225,10 @@ int main() {
         font.openFromFile("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf");
 #endif
 
-    auto keyOfSelection = [&]() {
-        return CellKey{selectedRow, selectedCol};
-    };
-
     auto syncBufferFromCell = [&]() {
-        const auto it = cells.find(keyOfSelection());
-        if (it != cells.end()) {
-            editBuffer = std::to_string(it->second);
+        int value = 0;
+        if (cells.GetCellValue(selectedRow + 1, selectedCol + 1, value)) {
+            editBuffer = std::to_string(value);
         } else {
             editBuffer.clear();
         }
@@ -323,11 +298,10 @@ int main() {
                         syncBufferFromCell();
                     }
                 } else if (key == sf::Keyboard::Key::Enter) {
-                    const CellKey k{selectedRow, selectedCol};
                     if (editBuffer.empty() || editBuffer == "-") {
-                        cells.erase(k);
+                        cells.ClearCellValue(selectedRow + 1, selectedCol + 1);
                     } else {
-                        cells[k] = std::stoi(editBuffer);
+                        cells.SetCellValue(selectedRow + 1, selectedCol + 1, std::stoi(editBuffer));
                     }
                     statusMessage = "guardado " + cellLabel(selectedRow, selectedCol);
                 } else if (key == sf::Keyboard::Key::Backspace) {
@@ -336,18 +310,18 @@ int main() {
                     }
                     statusMessage.clear();
                 } else if (key == sf::Keyboard::Key::Delete) {
-                    cells.erase(CellKey{selectedRow, selectedCol});
+                    cells.ClearCellValue(selectedRow + 1, selectedCol + 1);
                     editBuffer.clear();
                     statusMessage = "borrado " + cellLabel(selectedRow, selectedCol);
                 } else if (key == sf::Keyboard::Key::F) {
-                    const int removed = deleteRowCells(cells, selectedRow);
+                    const int removed = deleteRowCells(cells, selectedRow, cols);
                     editBuffer.clear();
                     rangeAnchor.reset();
                     statusMessage =
                         "fila " + std::to_string(selectedRow + 1) +
                         (removed == 0 ? " vacia" : " eliminada (" + std::to_string(removed) + " celdas)");
                 } else if (key == sf::Keyboard::Key::C) {
-                    const int removed = deleteColumnCells(cells, selectedCol);
+                    const int removed = deleteColumnCells(cells, selectedCol, rows);
                     editBuffer.clear();
                     rangeAnchor.reset();
                     statusMessage =
@@ -426,7 +400,8 @@ int main() {
                 const bool selected = (r == selectedRow && c == selectedCol);
                 const bool inRange =
                     rangeAnchor.has_value() && isInsideRange(r, c, *rangeAnchor, CellCoord{selectedRow, selectedCol});
-                const bool hasValue = cells.find(CellKey{r, c}) != cells.end();
+                int cellValue = 0;
+                const bool hasValue = cells.GetCellValue(r + 1, c + 1, cellValue);
 
                 if (selected) {
                     cell.setFillColor(sf::Color(70, 120, 220));
@@ -444,11 +419,8 @@ int main() {
                     std::string textValue;
                     if (selected && !editBuffer.empty()) {
                         textValue = editBuffer;
-                    } else {
-                        const auto it = cells.find(CellKey{r, c});
-                        if (it != cells.end()) {
-                            textValue = std::to_string(it->second);
-                        }
+                    } else if (hasValue) {
+                        textValue = std::to_string(cellValue);
                     }
 
                     if (!textValue.empty()) {
