@@ -9,9 +9,17 @@ int main() {
     const int cellW = 70;
     const int cellH = 32;
     const int margin = 24;
+    const int rowHeaderW = 44;
+    const int colHeaderH = 28;
+
+    const int gridX = margin + rowHeaderW;
+    const int gridY = margin + colHeaderH;
 
     sf::RenderWindow window(
-        sf::VideoMode({static_cast<unsigned int>(margin * 2 + cols * cellW), static_cast<unsigned int>(margin * 2 + rows * cellH)}),
+        sf::VideoMode({
+            static_cast<unsigned int>(gridX + cols * cellW + margin),
+            static_cast<unsigned int>(gridY + rows * cellH + margin)
+        }),
         "MiniExcel"
     );
 
@@ -105,8 +113,8 @@ int main() {
                 if (mousePressed->button == sf::Mouse::Button::Left) {
                     const int mx = mousePressed->position.x;
                     const int my = mousePressed->position.y;
-                    const int gx = mx - margin;
-                    const int gy = my - margin;
+                    const int gx = mx - gridX;
+                    const int gy = my - gridY;
                     if (gx >= 0 && gy >= 0) {
                         const int c = gx / cellW;
                         const int r = gy / cellH;
@@ -123,10 +131,49 @@ int main() {
 
         window.clear(sf::Color(20, 24, 30));
 
+        if (fontLoaded) {
+            sf::RectangleShape corner(sf::Vector2f(static_cast<float>(rowHeaderW - 1), static_cast<float>(colHeaderH - 1)));
+            corner.setPosition(sf::Vector2f(static_cast<float>(margin), static_cast<float>(margin)));
+            corner.setFillColor(sf::Color(55, 60, 72));
+            window.draw(corner);
+
+            for (int c = 0; c < cols; ++c) {
+                sf::RectangleShape headerCell(sf::Vector2f(static_cast<float>(cellW - 1), static_cast<float>(colHeaderH - 1)));
+                headerCell.setPosition(sf::Vector2f(static_cast<float>(gridX + c * cellW), static_cast<float>(margin)));
+                headerCell.setFillColor(sf::Color(55, 60, 72));
+                window.draw(headerCell);
+
+                char labelChar = static_cast<char>('A' + c);
+                std::string label(1, labelChar);
+                sf::Text text(font, label, 14);
+                text.setFillColor(sf::Color::White);
+                text.setPosition(sf::Vector2f(
+                    static_cast<float>(gridX + c * cellW + (cellW / 2) - 5),
+                    static_cast<float>(margin + 5)
+                ));
+                window.draw(text);
+            }
+
+            for (int r = 0; r < rows; ++r) {
+                sf::RectangleShape headerCell(sf::Vector2f(static_cast<float>(rowHeaderW - 1), static_cast<float>(cellH - 1)));
+                headerCell.setPosition(sf::Vector2f(static_cast<float>(margin), static_cast<float>(gridY + r * cellH)));
+                headerCell.setFillColor(sf::Color(55, 60, 72));
+                window.draw(headerCell);
+
+                sf::Text text(font, std::to_string(r + 1), 14);
+                text.setFillColor(sf::Color::White);
+                text.setPosition(sf::Vector2f(
+                    static_cast<float>(margin + 10),
+                    static_cast<float>(gridY + r * cellH + 6)
+                ));
+                window.draw(text);
+            }
+        }
+
         for (int r = 0; r < rows; ++r) {
             for (int c = 0; c < cols; ++c) {
                 sf::RectangleShape cell(sf::Vector2f(static_cast<float>(cellW - 1), static_cast<float>(cellH - 1)));
-                cell.setPosition(sf::Vector2f(static_cast<float>(margin + c * cellW), static_cast<float>(margin + r * cellH)));
+                cell.setPosition(sf::Vector2f(static_cast<float>(gridX + c * cellW), static_cast<float>(gridY + r * cellH)));
 
                 const bool selected = (r == selectedRow && c == selectedCol);
                 int cellValue = 0;
@@ -154,8 +201,8 @@ int main() {
                         sf::Text text(font, textValue, 14);
                         text.setFillColor(sf::Color::White);
                         text.setPosition(sf::Vector2f(
-                            static_cast<float>(margin + c * cellW + 6),
-                            static_cast<float>(margin + r * cellH + 6)
+                            static_cast<float>(gridX + c * cellW + 6),
+                            static_cast<float>(gridY + r * cellH + 6)
                         ));
                         window.draw(text);
                     }

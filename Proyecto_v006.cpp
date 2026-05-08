@@ -45,6 +45,52 @@ class SparseMatrix{
         }
     }
 
+    ~SparseMatrix(){
+        for(int i=0;i<capacity;i++){
+            HashNode* nodoFila = HashFilas[i];
+            while(nodoFila!=nullptr){
+                HashNode* siguiente = nodoFila->next;
+                delete nodoFila;
+                nodoFila = siguiente;
+            }
+            HashFilas[i]=nullptr;
+
+            HashNode* nodoColumna = HashColumnas[i];
+            while(nodoColumna!=nullptr){
+                HashNode* siguiente = nodoColumna->next;
+                delete nodoColumna;
+                nodoColumna = siguiente;
+            }
+            HashColumnas[i]=nullptr;
+        }
+
+        Matriz* fila = head->row;
+        while(fila!=nullptr){
+            Celdas* celda = fila->cel;
+            while(celda!=nullptr){
+                Celdas* siguienteCelda = celda->next;
+                delete celda;
+                celda = siguienteCelda;
+            }
+
+            Matriz* siguienteFila = fila->sig;
+            delete fila;
+            fila = siguienteFila;
+        }
+        head->row=nullptr;
+
+        Matriz* columna = head->col;
+        while(columna!=nullptr){
+            Matriz* siguienteColumna = columna->sig;
+            delete columna;
+            columna = siguienteColumna;
+        }
+        head->col=nullptr;
+
+        delete head;
+        head=nullptr;
+    }
+
     private:
 //HASH TABLE: IMPLEMENTACION
         //USAREMOS EL METODO DE CHAINING, PARA ACCEDER A LOS NODOS DE LAS CABECERAS EN EL MENOR TIEMPO POSIBLE
