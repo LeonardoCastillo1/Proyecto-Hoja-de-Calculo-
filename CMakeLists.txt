@@ -1,18 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
-project(MiProyecto)
+project(ProyectoHojaDeCalculo LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Ruta de SFML
-set(SFML_DIR "C:/msys64/mingw64/lib/cmake/SFML")
+if(WIN32 AND NOT DEFINED SFML_DIR)
+    set(SFML_DIR "C:/msys64/mingw64/lib/cmake/SFML")
+endif()
 
 find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System)
 
 add_executable(${PROJECT_NAME} main.cpp)
 add_executable(run_v006 demo_v006.cpp)
 
-target_link_libraries(${PROJECT_NAME} sfml-graphics sfml-window sfml-system)
+target_link_libraries(${PROJECT_NAME} PRIVATE SFML::Graphics SFML::Window SFML::System)
 
 if(WIN32)
     get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)

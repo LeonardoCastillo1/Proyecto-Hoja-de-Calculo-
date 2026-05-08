@@ -37,9 +37,20 @@ int main() {
     std::string editBuffer;
 
     sf::Font font;
-    const bool fontLoaded =
+    bool fontLoaded = false;
+#ifdef __APPLE__
+    fontLoaded =
+        font.openFromFile("/System/Library/Fonts/Supplemental/Arial.ttf") ||
+        font.openFromFile("/System/Library/Fonts/Supplemental/Verdana.ttf");
+#elif defined(_WIN32)
+    fontLoaded =
         font.openFromFile("C:/Windows/Fonts/segoeui.ttf") ||
         font.openFromFile("C:/Windows/Fonts/arial.ttf");
+#else
+    fontLoaded =
+        font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") ||
+        font.openFromFile("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf");
+#endif
 
     auto keyOfSelection = [&]() {
         return CellKey{selectedRow, selectedCol};
