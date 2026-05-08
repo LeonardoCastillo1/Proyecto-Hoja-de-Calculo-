@@ -457,5 +457,38 @@ class SparseMatrix{
         return suma;
     }
 
+    void SetCellValue(int row, int col, int value){
+        CrearModificarBuscarCeldas(value, col, row);
+    }
+
+    bool GetCellValue(int row, int col, int &value){
+        Matriz* fila = BuscarFilaHash(row);
+        if(fila==nullptr)return false;
+        Celdas* temp = fila->cel;
+        while(temp!=nullptr && temp->col < col){
+            temp=temp->next;
+        }
+        if(temp!=nullptr && temp->col==col){
+            value=temp->val;
+            return true;
+        }
+        return false;
+    }
+
+    void ClearCellValue(int row, int col){
+        Matriz* fila = BuscarFilaHash(row);
+        Matriz* columna = BuscarColumnaHash(col);
+        if(fila==nullptr || columna==nullptr)return;
+
+        Celdas* temp = fila->cel;
+        while(temp!=nullptr && temp->col < col){
+            temp=temp->next;
+        }
+        if(temp==nullptr || temp->col!=col)return;
+
+        Celdas* objetivo = temp;
+        EliminarCelda(objetivo, fila, columna);
+    }
+
 
 };

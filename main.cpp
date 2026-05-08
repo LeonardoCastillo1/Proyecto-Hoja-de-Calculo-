@@ -1,23 +1,7 @@
 #include <SFML/Graphics.hpp>
 #include <optional>
-#include <cstdlib>
 #include <string>
-#include <unordered_map>
-
-struct CellKey {
-    int row;
-    int col;
-
-    bool operator==(const CellKey& other) const {
-        return row == other.row && col == other.col;
-    }
-};
-
-struct CellKeyHash {
-    std::size_t operator()(const CellKey& key) const {
-        return (static_cast<std::size_t>(key.row) << 16) ^ static_cast<std::size_t>(key.col);
-    }
-};
+#include "Proyecto_v006.cpp"
 
 int main() {
     const int cols = 12;
@@ -31,7 +15,7 @@ int main() {
         "MiniExcel"
     );
 
-    std::unordered_map<CellKey, int, CellKeyHash> cells;
+    SparseMatrix cells;
     int selectedRow = 0;
     int selectedCol = 0;
     std::string editBuffer;
@@ -41,14 +25,10 @@ int main() {
         font.openFromFile("C:/Windows/Fonts/segoeui.ttf") ||
         font.openFromFile("C:/Windows/Fonts/arial.ttf");
 
-    auto keyOfSelection = [&]() {
-        return CellKey{selectedRow, selectedCol};
-    };
-
     auto syncBufferFromCell = [&]() {
-        const auto it = cells.find(keyOfSelection());
-        if (it != cells.end()) {
-            editBuffer = std::to_string(it->second);
+        int value = 0;
+        if (cells.GetCellValue(selectedRow + 1, selectedCol + 1, value)) {
+            editBuffer = std::to_string(value);
         } else {
             editBuffer.clear();
         }
@@ -94,18 +74,13 @@ int main() {
                         syncBufferFromCell();
                     }
                 } else if (key == sf::Keyboard::Key::Enter) {
-                    const CellKey k{selectedRow, selectedCol};
                     if (editBuffer.empty() || editBuffer == "-") {
-                        cells.erase(k);
+                        cells.ClearCellValue(selectedRow + 1, selectedCol + 1);
                     } else {
-                        cells[k] = std::stoi(editBuffer);
+                        cells.SetCellValue(selectedRow + 1, selectedCol + 1, std::stoi(editBuffer));
                     }
-                } else if (key == sf::Keyboard::Key::Backspace) {
-                    if (!editBuffer.empty()) {
-                        editBuffer.pop_back();
-                    }
-                } else if (key == sf::Keyboard::Key::Delete) {
-                    cells.erase(CellKey{selectedRow, selectedCol});
+                } else if (key == sf::Keyboard::Key::Backspace || key == sf::Keyboard::Key::Delete) {
+                    cells.ClearCellValue(selectedRow + 1, selectedCol + 1);
                     editBuffer.clear();
                 }
 
@@ -154,7 +129,8 @@ int main() {
                 cell.setPosition(sf::Vector2f(static_cast<float>(margin + c * cellW), static_cast<float>(margin + r * cellH)));
 
                 const bool selected = (r == selectedRow && c == selectedCol);
-                const bool hasValue = cells.find(CellKey{r, c}) != cells.end();
+                int cellValue = 0;
+                const bool hasValue = cells.GetCellValue(r + 1, c + 1, cellValue);
 
                 if (selected) {
                     cell.setFillColor(sf::Color(70, 120, 220));
@@ -170,11 +146,8 @@ int main() {
                     std::string textValue;
                     if (selected && !editBuffer.empty()) {
                         textValue = editBuffer;
-                    } else {
-                        const auto it = cells.find(CellKey{r, c});
-                        if (it != cells.end()) {
-                            textValue = std::to_string(it->second);
-                        }
+                    } else if (hasValue) {
+                        textValue = std::to_string(cellValue);
                     }
 
                     if (!textValue.empty()) {
