@@ -1,7 +1,194 @@
 #include <SFML/Graphics.hpp>
+
+#include <algorithm>
 #include <optional>
+#include <sstream>
 #include <string>
+
 #include "Proyecto_v006.cpp"
+
+struct CellCoord {
+    int row;
+    int col;
+};
+
+// Operaciones que se pueden ejecutar sobre el rango seleccionado en la vista.
+enum class RangeOperation {
+    Sum,
+    Subtract,
+    Average,
+    Maximum,
+    Minimum
+};
+
+// Valores acumulados en un rango. Con una sola pasada se obtiene todo lo necesario.
+struct OperationResult {
+    bool hasValues = false;
+    int sum = 0;
+    int difference = 0;
+    int minValue = 0;
+    int maxValue = 0;
+    int count = 0;
+};
+
+// Convierte un indice de columna a formato tipo hoja de calculo: 0 -> A, 1 -> B.
+std::string columnLabel(int col) {
+    std::string label;
+    int value = col;
+
+    do {
+        label.insert(label.begin(), static_cast<char>('A' + (value % 26)));
+        value = (value / 26) - 1;
+    } while (value >= 0);
+
+    return label;
+}
+
+std::string cellLabel(int row, int col) {
+    return columnLabel(col) + std::to_string(row + 1);
+}
+
+// Devuelve el texto del rango seleccionado, por ejemplo A1:C4.
+std::string rangeLabel(CellCoord a, CellCoord b) {
+    const int rowStart = std::min(a.row, b.row);
+    const int rowEnd = std::max(a.row, b.row);
+    const int colStart = std::min(a.col, b.col);
+    const int colEnd = std::max(a.col, b.col);
+
+    if (rowStart == rowEnd && colStart == colEnd) {
+        return cellLabel(rowStart, colStart);
+    }
+
+    return cellLabel(rowStart, colStart) + ":" + cellLabel(rowEnd, colEnd);
+}
+
+bool isInsideRange(int row, int col, CellCoord a, CellCoord b) {
+    const int rowStart = std::min(a.row, b.row);
+    const int rowEnd = std::max(a.row, b.row);
+    const int colStart = std::min(a.col, b.col);
+    const int colEnd = std::max(a.col, b.col);
+
+    return row >= rowStart && row <= rowEnd && col >= colStart && col <= colEnd;
+}
+
+// Muestra promedios como 4.5 en lugar de 4.500000.
+std::string formatDecimal(double value) {
+    std::ostringstream out;
+    out.precision(2);
+    out << std::fixed << value;
+
+    std::string text = out.str();
+    while (text.size() > 1 && text.back() == '0') {
+        text.pop_back();
+    }
+    if (!text.empty() && text.back() == '.') {
+        text.pop_back();
+    }
+
+    return text;
+}
+
+std::string operationName(RangeOperation operation) {
+    switch (operation) {
+        case RangeOperation::Sum:
+            return "SUMA";
+        case RangeOperation::Subtract:
+            return "RESTA";
+        case RangeOperation::Average:
+            return "PROMEDIO";
+        case RangeOperation::Maximum:
+            return "MAXIMO";
+        case RangeOperation::Minimum:
+            return "MINIMO";
+    }
+
+    return "OPERACION";
+}
+
+std::string operationValue(RangeOperation operation, const OperationResult& result) {
+    switch (operation) {
+        case RangeOperation::Sum:
+            return std::to_string(result.sum);
+        case RangeOperation::Subtract:
+            return std::to_string(result.difference);
+        case RangeOperation::Average:
+            return formatDecimal(static_cast<double>(result.sum) / result.count);
+        case RangeOperation::Maximum:
+            return std::to_string(result.maxValue);
+        case RangeOperation::Minimum:
+            return std::to_string(result.minValue);
+    }
+
+    return "";
+}
+
+// Calcula suma, resta, promedio, maximo y minimo para un rango rectangular.
+OperationResult calculateRangeStats(SparseMatrix& cells, CellCoord a, CellCoord b) {
+    const int rowStart = std::min(a.row, b.row);
+    const int rowEnd = std::max(a.row, b.row);
+    const int colStart = std::min(a.col, b.col);
+    const int colEnd = std::max(a.col, b.col);
+
+    OperationResult result;
+
+    // La vista usa indices desde 0; SparseMatrix recibe fila y columna desde 1.
+    for (int row = rowStart; row <= rowEnd; ++row) {
+        for (int col = colStart; col <= colEnd; ++col) {
+            int value = 0;
+            if (!cells.GetCellValue(row + 1, col + 1, value)) {
+                continue;
+            }
+
+            if (!result.hasValues) {
+                result.sum = value;
+                // La resta comienza con la primera celda ocupada y resta las siguientes.
+                result.difference = value;
+                result.minValue = value;
+                result.maxValue = value;
+                result.hasValues = true;
+            } else {
+                result.sum += value;
+                result.difference -= value;
+                result.minValue = std::min(result.minValue, value);
+                result.maxValue = std::max(result.maxValue, value);
+            }
+
+            result.count++;
+        }
+    }
+
+    return result;
+}
+
+// Elimina todas las celdas ocupadas de la fila visible seleccionada.
+int deleteRowCells(SparseMatrix& cells, int rowToDelete, int totalCols) {
+    int removed = 0;
+
+    for (int col = 0; col < totalCols; ++col) {
+        int value = 0;
+        if (cells.GetCellValue(rowToDelete + 1, col + 1, value)) {
+            cells.ClearCellValue(rowToDelete + 1, col + 1);
+            removed++;
+        }
+    }
+
+    return removed;
+}
+
+// Elimina todas las celdas ocupadas de la columna visible seleccionada.
+int deleteColumnCells(SparseMatrix& cells, int colToDelete, int totalRows) {
+    int removed = 0;
+
+    for (int row = 0; row < totalRows; ++row) {
+        int value = 0;
+        if (cells.GetCellValue(row + 1, colToDelete + 1, value)) {
+            cells.ClearCellValue(row + 1, colToDelete + 1);
+            removed++;
+        }
+    }
+
+    return removed;
+}
 
 int main() {
     const int cols = 12;
@@ -27,11 +214,24 @@ int main() {
     int selectedRow = 0;
     int selectedCol = 0;
     std::string editBuffer;
+    std::optional<CellCoord> rangeAnchor;
+    std::string statusMessage;
 
     sf::Font font;
-    const bool fontLoaded =
+    bool fontLoaded = false;
+#ifdef __APPLE__
+    fontLoaded =
+        font.openFromFile("/System/Library/Fonts/Supplemental/Arial.ttf") ||
+        font.openFromFile("/System/Library/Fonts/Supplemental/Verdana.ttf");
+#elif defined(_WIN32)
+    fontLoaded =
         font.openFromFile("C:/Windows/Fonts/segoeui.ttf") ||
         font.openFromFile("C:/Windows/Fonts/arial.ttf");
+#else
+    fontLoaded =
+        font.openFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") ||
+        font.openFromFile("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf");
+#endif
 
     auto syncBufferFromCell = [&]() {
         int value = 0;
@@ -43,12 +243,36 @@ int main() {
     };
 
     auto updateTitle = [&]() {
+        const std::string selectedRange =
+            rangeAnchor.has_value() ? " | rango " + rangeLabel(*rangeAnchor, CellCoord{selectedRow, selectedCol}) : "";
+        const std::string status = statusMessage.empty() ? "" : " | " + statusMessage;
         const std::string title =
-            "MiniExcel | celda [" + std::to_string(selectedRow + 1) + "," + std::to_string(selectedCol + 1) +
-            "] | valor: " + (editBuffer.empty() ? std::string("(vacio)") : editBuffer) +
-            " | Enter=guardar, Delete=borrar";
+            "MiniExcel | celda " + cellLabel(selectedRow, selectedCol) +
+            " | valor: " + (editBuffer.empty() ? std::string("(vacio)") : editBuffer) +
+            selectedRange + status +
+            " | Enter=guardar, Delete=celda, F=elim fila, C=elim col, Espacio=rango, S=suma, R=resta, P=prom, M=max, N=min";
         window.setTitle(title);
     };
+
+    auto showOperation = [&](RangeOperation operation) {
+        const CellCoord start = rangeAnchor.value_or(CellCoord{selectedRow, selectedCol});
+        const CellCoord end{selectedRow, selectedCol};
+        const OperationResult result = calculateRangeStats(cells, start, end);
+        const std::string selectedRange = rangeLabel(start, end);
+        const std::string name = operationName(operation);
+
+        if (!result.hasValues) {
+            statusMessage = name + " " + selectedRange + " = sin celdas";
+        } else {
+            statusMessage =
+                name + " " + selectedRange + " = " + operationValue(operation, result) +
+                " (" + std::to_string(result.count) + " celdas)";
+        }
+
+        // Mantiene visible el rango calculado despues de mostrar el resultado.
+        rangeAnchor = start;
+    };
+
     syncBufferFromCell();
     updateTitle();
 
@@ -87,9 +311,46 @@ int main() {
                     } else {
                         cells.SetCellValue(selectedRow + 1, selectedCol + 1, std::stoi(editBuffer));
                     }
-                } else if (key == sf::Keyboard::Key::Backspace || key == sf::Keyboard::Key::Delete) {
+                    statusMessage = "guardado " + cellLabel(selectedRow, selectedCol);
+                } else if (key == sf::Keyboard::Key::Backspace) {
+                    if (!editBuffer.empty()) {
+                        editBuffer.pop_back();
+                    }
+                    statusMessage.clear();
+                } else if (key == sf::Keyboard::Key::Delete) {
                     cells.ClearCellValue(selectedRow + 1, selectedCol + 1);
                     editBuffer.clear();
+                    statusMessage = "borrado " + cellLabel(selectedRow, selectedCol);
+                } else if (key == sf::Keyboard::Key::F) {
+                    const int removed = deleteRowCells(cells, selectedRow, cols);
+                    editBuffer.clear();
+                    rangeAnchor.reset();
+                    statusMessage =
+                        "fila " + std::to_string(selectedRow + 1) +
+                        (removed == 0 ? " vacia" : " eliminada (" + std::to_string(removed) + " celdas)");
+                } else if (key == sf::Keyboard::Key::C) {
+                    const int removed = deleteColumnCells(cells, selectedCol, rows);
+                    editBuffer.clear();
+                    rangeAnchor.reset();
+                    statusMessage =
+                        "columna " + columnLabel(selectedCol) +
+                        (removed == 0 ? " vacia" : " eliminada (" + std::to_string(removed) + " celdas)");
+                } else if (key == sf::Keyboard::Key::Space) {
+                    rangeAnchor = CellCoord{selectedRow, selectedCol};
+                    statusMessage = "inicio " + cellLabel(selectedRow, selectedCol);
+                } else if (key == sf::Keyboard::Key::S) {
+                    showOperation(RangeOperation::Sum);
+                } else if (key == sf::Keyboard::Key::R) {
+                    showOperation(RangeOperation::Subtract);
+                } else if (key == sf::Keyboard::Key::P) {
+                    showOperation(RangeOperation::Average);
+                } else if (key == sf::Keyboard::Key::M) {
+                    showOperation(RangeOperation::Maximum);
+                } else if (key == sf::Keyboard::Key::N) {
+                    showOperation(RangeOperation::Minimum);
+                } else if (key == sf::Keyboard::Key::Escape) {
+                    rangeAnchor.reset();
+                    statusMessage.clear();
                 }
 
                 updateTitle();
@@ -97,16 +358,24 @@ int main() {
 
             if (const auto* textEntered = event->getIf<sf::Event::TextEntered>()) {
                 const char32_t cp = textEntered->unicode;
+                bool changed = false;
+
                 if (cp >= U'0' && cp <= U'9') {
                     if (editBuffer.size() < 9) {
                         editBuffer.push_back(static_cast<char>(cp));
+                        changed = true;
                     }
                 } else if (cp == U'-') {
                     if (editBuffer.empty()) {
                         editBuffer.push_back('-');
+                        changed = true;
                     }
                 }
-                updateTitle();
+
+                if (changed) {
+                    statusMessage.clear();
+                    updateTitle();
+                }
             }
 
             if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>()) {
@@ -176,11 +445,15 @@ int main() {
                 cell.setPosition(sf::Vector2f(static_cast<float>(gridX + c * cellW), static_cast<float>(gridY + r * cellH)));
 
                 const bool selected = (r == selectedRow && c == selectedCol);
+                const bool inRange =
+                    rangeAnchor.has_value() && isInsideRange(r, c, *rangeAnchor, CellCoord{selectedRow, selectedCol});
                 int cellValue = 0;
                 const bool hasValue = cells.GetCellValue(r + 1, c + 1, cellValue);
 
                 if (selected) {
                     cell.setFillColor(sf::Color(70, 120, 220));
+                } else if (inRange) {
+                    cell.setFillColor(sf::Color(58, 88, 105));
                 } else if (hasValue) {
                     cell.setFillColor(sf::Color(70, 150, 90));
                 } else {
